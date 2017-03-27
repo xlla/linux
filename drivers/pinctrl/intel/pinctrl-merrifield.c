@@ -804,6 +804,9 @@ static int mrfld_config_set_pin(struct mrfld_pinctrl *mp, unsigned int pin,
 		case 2000:
 			bits |= BUFCFG_PUPD_VAL_2K << BUFCFG_PUPD_VAL_SHIFT;
 			break;
+		case 910:
+			bits |= BUFCFG_PUPD_VAL_910 << BUFCFG_PUPD_VAL_SHIFT;
+			break;
 		default:
 			return -EINVAL;
 		}
@@ -823,6 +826,9 @@ static int mrfld_config_set_pin(struct mrfld_pinctrl *mp, unsigned int pin,
 			break;
 		case 2000:
 			bits |= BUFCFG_PUPD_VAL_2K << BUFCFG_PUPD_VAL_SHIFT;
+			break;
+		case 910:
+			bits |= BUFCFG_PUPD_VAL_910 << BUFCFG_PUPD_VAL_SHIFT;
 			break;
 		default:
 			return -EINVAL;
