@@ -579,6 +579,11 @@ static int dwc3_phy_setup(struct dwc3 *dwc)
 		ret = dwc3_ulpi_init(dwc);
 		if (ret)
 			return ret;
+		if(dwc->dr_mode == USB_DR_MODE_HOST)
+		{
+                        reg |= DWC3_GUSB2PHYCFG_ULPI_EXT_VBUS_DRV;
+			dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
+		}
 		/* FALLTHROUGH */
 	default:
 		break;
