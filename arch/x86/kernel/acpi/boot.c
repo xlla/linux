@@ -1375,7 +1375,7 @@ static int __init dmi_ignore_irq0_timer_override(const struct dmi_system_id *d)
  *
  * We initialize the Hardware-reduced ACPI model here:
  */
-static void __init acpi_reduced_hw_init(void)
+void __init __weak acpi_reduced_hw_init(void)
 {
 	if (acpi_gbl_reduced_hardware) {
 		/*

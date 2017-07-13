@@ -226,6 +226,8 @@ struct acpi_subtable_proc {
 
 void __iomem *__acpi_map_table(unsigned long phys, unsigned long size);
 void __acpi_unmap_table(void __iomem *map, unsigned long size);
+
+void acpi_reduced_hw_init(void);
 int early_acpi_boot_init(void);
 int acpi_boot_init (void);
 void acpi_boot_table_init (void);
@@ -699,6 +701,7 @@ static inline struct device *acpi_get_first_physical_node(struct acpi_device *ad
 static inline void acpi_early_init(void) { }
 static inline void acpi_subsystem_init(void) { }
 
+static inline void acpi_reduced_hw_init(void) { }
 static inline int early_acpi_boot_init(void)
 {
 	return 0;
