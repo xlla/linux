@@ -13,6 +13,7 @@
 
 #define pr_fmt(fmt) "intel_mid: " fmt
 
+#include <linux/acpi.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/interrupt.h>
@@ -170,6 +171,14 @@ out:
 static unsigned char intel_mid_get_nmi_reason(void)
 {
 	return 0;
+}
+
+void __init acpi_reduced_hw_init(void)
+{
+	/*
+	 * Do nothing for now as everything needed done in
+	 * x86_intel_mid_early_setup() below.
+	 */
 }
 
 /*
