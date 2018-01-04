@@ -35,7 +35,8 @@
 
 struct cht_mc_private {
 	struct snd_soc_jack headset;
-	char codec_name[16];
+	/* codec name is i2c-<HID>:00 with HID being 8 chars */
+	char codec_name[SND_SOC_ACPI_I2C_DEVICE_NAME_LEN];
 	struct clk *mclk;
 };
 

@@ -219,7 +219,8 @@ static struct snd_soc_card bytcht_da7213_card = {
 	.num_dapm_routes = ARRAY_SIZE(audio_map),
 };
 
-static char codec_name[16]; /* i2c-<HID>:00 with HID being 8 chars */
+/* codec name is i2c-<HID>:00 with HID being 8 chars */
+static char codec_name[SND_SOC_ACPI_I2C_DEVICE_NAME_LEN];
 
 static int bytcht_da7213_probe(struct platform_device *pdev)
 {

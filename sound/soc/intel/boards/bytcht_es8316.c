@@ -232,7 +232,8 @@ static struct snd_soc_card byt_cht_es8316_card = {
 	.fully_routed = true,
 };
 
-static char codec_name[16]; /* i2c-<HID>:00 with HID being 8 chars */
+/* codec name is i2c-<HID>:00 with HID being 8 chars */
+static char codec_name[SND_SOC_ACPI_I2C_DEVICE_NAME_LEN];
 
 static int snd_byt_cht_es8316_mc_probe(struct platform_device *pdev)
 {

@@ -713,7 +713,8 @@ static struct snd_soc_card byt_rt5640_card = {
 	.fully_routed = true,
 };
 
-static char byt_rt5640_codec_name[16]; /* i2c-<HID>:00 with HID being 8 chars */
+/* codec name is i2c-<HID>:00 with HID being 8 chars */
+static char byt_rt5640_codec_name[SND_SOC_ACPI_I2C_DEVICE_NAME_LEN];
 static char byt_rt5640_codec_aif_name[12]; /*  = "rt5640-aif[1|2]" */
 static char byt_rt5640_cpu_dai_name[10]; /*  = "ssp[0|2]-port" */
 
