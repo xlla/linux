@@ -299,7 +299,7 @@ int check_knl_erratum(void);
 int validate_cpu(void);
 
 /* early_serial_console.c */
-extern int early_serial_base;
+extern unsigned long early_serial_base;
 void console_init(void);
 
 /* edd.c */
