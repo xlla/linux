@@ -79,6 +79,18 @@ static inline void io_delay(void)
 	asm volatile("outb %%al,%0" : : "dN" (DELAY_PORT));
 }
 
+static inline u8 readb(const volatile void __iomem *addr)
+{
+	u8 v;
+	asm volatile("movb %1,%0" : "=q" (v) : "m" (*(volatile u8 __force *)addr));
+	return v;
+}
+
+static inline void writeb(u8 v, volatile void __iomem *addr)
+{
+	asm volatile("movb %0,%1" : : "q" (v), "m" (*(volatile u8 __force *)addr));
+}
+
 /* These functions are used to reference data in other segments. */
 
 static inline u16 ds(void)
