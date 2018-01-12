@@ -15,7 +15,7 @@
 
 #include "boot.h"
 
-int early_serial_base;
+unsigned long early_serial_base;
 
 #define XMTRDY          0x20
 
