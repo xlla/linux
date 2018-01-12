@@ -104,10 +104,10 @@ static inline void finalize_identity_maps(void)
 
 #ifdef CONFIG_EARLY_PRINTK
 /* early_serial_console.c */
-extern int early_serial_base;
+extern unsigned long early_serial_base;
 void console_init(void);
 #else
-static const int early_serial_base;
+static const unsigned long early_serial_base;
 static inline void console_init(void)
 { }
 #endif
