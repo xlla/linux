@@ -90,7 +90,7 @@ static void early_serial_init(unsigned long port, int baud)
 static void parse_earlyprintk(void)
 {
 	int baud = DEFAULT_BAUD;
-	char arg[32];
+	char arg[64];
 	int pos = 0;
 	unsigned long port = 0;
 
