@@ -33,6 +33,22 @@ static void io_serial_out(unsigned long addr, int offset, int value)
 	outb(value, addr + offset);
 }
 
+#define IO_SPACE_LIMIT 0xffff
+
+static void mem8_serial_out(unsigned long addr, int offset, int value)
+{
+	u8 __iomem *vaddr = (u8 __iomem *)addr;
+	/* shift implied by pointer type */
+	writeb(value, vaddr + offset);
+}
+
+static unsigned int mem8_serial_in(unsigned long addr, int offset)
+{
+	u8 __iomem *vaddr = (u8 __iomem *)addr;
+	/* shift implied by pointer type */
+	return readb(vaddr + offset);
+}
+
 static void early_serial_configure(unsigned long port, int baud)
 {
 	unsigned char c;
@@ -54,7 +70,11 @@ static void early_serial_configure(unsigned long port, int baud)
 static void early_serial_init(unsigned long port, int baud)
 {
 	/* Assign serial I/O accessors */
-	if (port) {
+	if (port > IO_SPACE_LIMIT) {
+		/* It is memory mapped - assume 8-bit alignment */
+		serial_in = mem8_serial_in;
+		serial_out = mem8_serial_out;
+	} else if (port) {
 		/* These will always be IO based ports */
 		serial_in = io_serial_in;
 		serial_out = io_serial_out;
