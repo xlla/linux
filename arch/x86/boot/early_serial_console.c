@@ -67,7 +67,7 @@ static void early_serial_configure(unsigned long port, int baud)
 	serial_out(port, LCR, c & ~DLAB);
 }
 
-static void early_serial_init(unsigned long port, int baud)
+static void early_serial_init(unsigned long port, int baud, bool configure)
 {
 	/* Assign serial I/O accessors */
 	if (port > IO_SPACE_LIMIT) {
@@ -82,7 +82,8 @@ static void early_serial_init(unsigned long port, int baud)
 		return;
 	}
 
-	early_serial_configure(port, baud);
+	if (configure)
+		early_serial_configure(port, baud);
 
 	early_serial_base = port;
 }
@@ -93,6 +94,7 @@ static void parse_earlyprintk(void)
 	char arg[64];
 	int pos = 0;
 	unsigned long port = 0;
+	bool configure = true;
 
 	if (cmdline_find_option("earlyprintk", arg, sizeof arg) > 0) {
 		char *e;
@@ -133,12 +135,16 @@ static void parse_earlyprintk(void)
 		if (arg[pos] == ',')
 			pos++;
 
-		baud = simple_strtoull(arg + pos, &e, 0);
-		if (baud == 0 || arg + pos == e)
-			baud = DEFAULT_BAUD;
+		if (strncmp(arg + pos, "nocfg", 5)) {
+			baud = simple_strtoull(arg + pos, &e, 0);
+			if (baud == 0 || arg + pos == e)
+				baud = DEFAULT_BAUD;
+		} else {
+			configure = false;
+		}
 	}
 
-	early_serial_init(port, baud);
+	early_serial_init(port, baud, configure);
 }
 
 #define BASE_BAUD (1843200/16)
@@ -162,6 +168,7 @@ static void parse_console_uart8250(void)
 	char optstr[64], *options;
 	int baud = DEFAULT_BAUD;
 	unsigned long port = 0;
+	bool configure = true;
 
 	/*
 	 * console=uart8250,io,0x3f8,115200n8
@@ -179,12 +186,16 @@ static void parse_console_uart8250(void)
 	else
 		return;
 
-	if (options && (options[0] == ','))
-		baud = simple_strtoull(options + 1, &options, 0);
-	else
+	if (options[0] == ',') {
+		if (strncmp(options + 1, "nocfg", 5))
+			baud = simple_strtoull(options + 1, &options, 0);
+		else
+			configure = false;
+	} else {
 		baud = probe_baud(port);
+	}
 
-	early_serial_init(port, baud);
+	early_serial_init(port, baud, configure);
 }
 
 void console_init(void)
