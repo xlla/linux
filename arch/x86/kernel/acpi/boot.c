@@ -1387,6 +1387,7 @@ static int __init dmi_ignore_irq0_timer_override(const struct dmi_system_id *d)
  */
 void __init acpi_generic_reduced_hw_init(void)
 {
+pr_info("%s: here!\n", __func__);
 	/*
 	 * Override x86_init functions and bypass legacy PIC in
 	 * hardware reduced ACPI mode.
