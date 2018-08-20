@@ -17,6 +17,8 @@
 #include <linux/regmap.h>
 #include <linux/slab.h>
 
+#include "extcon-intel.h"
+
 #define CHT_WC_PHYCTRL			0x5e07
 
 #define CHT_WC_CHGRCTRL0		0x5e16
@@ -65,15 +67,6 @@
 #define CHT_WC_VBUS_GPIO_CTLO_DRV_OD	BIT(4)
 #define CHT_WC_VBUS_GPIO_CTLO_DIR_OUT	BIT(5)
 
-enum cht_wc_usb_id {
-	USB_ID_OTG,
-	USB_ID_GND,
-	USB_ID_FLOAT,
-	USB_RID_A,
-	USB_RID_B,
-	USB_RID_C,
-};
-
 enum cht_wc_mux_select {
 	MUX_SEL_PMIC = 0,
 	MUX_SEL_SOC,
@@ -101,9 +94,9 @@ static int cht_wc_extcon_get_id(struct cht_wc_extcon_data *ext, int pwrsrc_sts)
 {
 	switch ((pwrsrc_sts & CHT_WC_PWRSRC_USBID_MASK) >> CHT_WC_PWRSRC_USBID_SHIFT) {
 	case CHT_WC_PWRSRC_RID_GND:
-		return USB_ID_GND;
+		return INTEL_USB_ID_GND;
 	case CHT_WC_PWRSRC_RID_FLOAT:
-		return USB_ID_FLOAT;
+		return INTEL_USB_ID_FLOAT;
 	case CHT_WC_PWRSRC_RID_ACA:
 	default:
 		/*
@@ -111,7 +104,7 @@ static int cht_wc_extcon_get_id(struct cht_wc_extcon_data *ext, int pwrsrc_sts)
 		 * the USBID GPADC channel here and determine ACA role
 		 * based on that.
 		 */
-		return USB_ID_FLOAT;
+		return INTEL_USB_ID_FLOAT;
 	}
 }
 
@@ -221,7 +214,7 @@ static void cht_wc_extcon_pwrsrc_event(struct cht_wc_extcon_data *ext)
 	}
 
 	id = cht_wc_extcon_get_id(ext, pwrsrc_sts);
-	if (id == USB_ID_GND) {
+	if (id == INTEL_USB_ID_GND) {
 		/* The 5v boost causes a false VBUS / SDP detect, skip */
 		goto charger_det_done;
 	}
@@ -248,7 +241,7 @@ set_state:
 		ext->previous_cable = cable;
 	}
 
-	ext->usb_host = ((id == USB_ID_GND) || (id == USB_RID_A));
+	ext->usb_host = ((id == INTEL_USB_ID_GND) || (id == INTEL_USB_RID_A));
 	extcon_set_state_sync(ext->edev, EXTCON_USB_HOST, ext->usb_host);
 }
 
