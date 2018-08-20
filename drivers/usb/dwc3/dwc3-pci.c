@@ -297,47 +297,20 @@ static void dwc3_pci_remove(struct pci_dev *pci)
 }
 
 static const struct pci_device_id dwc3_pci_id_table[] = {
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_BSW),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_BYT),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_MRFLD),
-	  (kernel_ulong_t) &dwc3_pci_mrfld_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_SPTLP),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_SPTH),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_BXT),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_BXT_M),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_APL),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_KBP),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_GLK),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_CNPLP),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_CNPH),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_ICLLP),
-	  (kernel_ulong_t) &dwc3_pci_intel_properties, },
-
-	{ PCI_VDEVICE(AMD, PCI_DEVICE_ID_AMD_NL_USB),
-	  (kernel_ulong_t) &dwc3_pci_amd_properties, },
+	{ PCI_DEVICE_DATA(INTEL, BSW, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, BYT, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, MRFLD, &dwc3_pci_mrfld_properties) },
+	{ PCI_DEVICE_DATA(INTEL, SPTLP, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, SPTH, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, BXT, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, BXT_M, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, APL, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, KBP, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, GLK, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, CNPLP, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, CNPH, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(INTEL, ICLLP, &dwc3_pci_intel_properties) },
+	{ PCI_DEVICE_DATA(AMD, NL_USB, &dwc3_pci_amd_properties) },
 	{  }	/* Terminating Entry */
 };
 MODULE_DEVICE_TABLE(pci, dwc3_pci_id_table);
