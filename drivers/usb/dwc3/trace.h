@@ -238,7 +238,7 @@ DECLARE_EVENT_CLASS(dwc3_log_trb,
 	),
 	TP_printk("%s: trb %p buf %08x%08x size %s%d ctrl %08x (%c%c%c%c:%c%c:%s)",
 		__get_str(name), __entry->trb, __entry->bph, __entry->bpl,
-		({char *s;
+		({ char *s = "";
 		int pcm = ((__entry->size >> 24) & 3) + 1;
 		switch (__entry->type) {
 		case USB_ENDPOINT_XFER_INT:
@@ -254,8 +254,6 @@ DECLARE_EVENT_CLASS(dwc3_log_trb,
 				s = "3x ";
 				break;
 			}
-		default:
-			s = "";
 		} s; }),
 		DWC3_TRB_SIZE_LENGTH(__entry->size), __entry->ctrl,
 		__entry->ctrl & DWC3_TRB_CTRL_HWO ? 'H' : 'h',
