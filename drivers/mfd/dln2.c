@@ -733,8 +733,8 @@ static int dln2_probe(struct usb_interface *interface,
 	    hostif->desc.bNumEndpoints < 2)
 		return -ENODEV;
 
-	epin = &hostif->endpoint[0].desc;
-	epout = &hostif->endpoint[1].desc;
+	epin = &hostif->endpoint[1].desc;
+	epout = &hostif->endpoint[0].desc;
 	if (!usb_endpoint_is_bulk_out(epout))
 		return -ENODEV;
 	if (!usb_endpoint_is_bulk_in(epin))
