@@ -277,6 +277,11 @@ void calibrate_delay(void)
 	unsigned long lpj;
 	static bool printed;
 	int this_cpu = smp_processor_id();
+         printk("*************************************\n");
+         printk("*                                   *\n");
+         printk("*        HELLO YOCTO KERNEL         *\n");
+         printk("*                                   *\n");
+         printk("*************************************\n");
 
 	if (per_cpu(cpu_loops_per_jiffy, this_cpu)) {
 		lpj = per_cpu(cpu_loops_per_jiffy, this_cpu);

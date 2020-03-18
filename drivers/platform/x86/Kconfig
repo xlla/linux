@@ -1067,6 +1067,26 @@ config INTEL_PMC_CORE
 		- LTR Ignore
 		- MPHY/PLL gating status (Sunrisepoint PCH only)
 
+config INTEL_PSH_IPC
+       bool "Intel Platform Services Hub IPC Support"
+       depends on X86_INTEL_MID
+       ---help---
+         Platform Services Hub (PSH) is a low frequence IA core in
+         Intel Tangier SoC, whose power consumption is quite low. PSH
+         runs RTOS software inside itself, which independently controls
+         and collects sensor data, pre-processes the data, and
+         communicates with Intel Atom core. The latter could be put
+         into low power state for a long time, while all the sensor
+         data are collected without any lost.
+
+         PSH IPC is used as a bridge for OS sensor service to control
+         and access PSH sensors communications between kernel and PSH.
+         This is not needed for PC-type machines. Supported SoCs for
+         now:
+               - Intel Tangier
+
+         Say Y here to get Intel PSH IPC support.
+
 config IBM_RTL
 	tristate "Device driver to enable PRTL support"
 	depends on PCI
