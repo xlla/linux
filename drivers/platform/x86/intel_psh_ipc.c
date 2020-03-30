@@ -33,6 +33,9 @@
 #define PSH_CH_DATA(x)         (ipcdev->channel_data[x])
 #define PSH_CH_FLAG(x)         (ipcdev->flags[x])
 
+#define CMD_EXECUTE		"cmd exe"
+#define CMD_DUMP		"cmd dump"
+
 /* PSH registers */
 struct psh_registers {
        u32             pimr0;          /* 00h */
@@ -373,17 +376,30 @@ static ssize_t psh_send_cmd_store(struct device *dev, struct device_attribute *a
        struct ipc_controller_t *ipcdev = dev_get_drvdata(dev);
        struct psh_msg out_msg;
        int psh_dbg_err;
+	int len = strlen(CMD_EXECUTE);
+       	if (size >= len && strncmp(buf, CMD_EXECUTE, len) == 0) {
+                memset(&out_msg, 0, sizeof(out_msg));
 
-       memset(&out_msg, 0, sizeof(out_msg));
+                psh_dbg_err = intel_ia2psh_command(&psh_dbg_msg, &out_msg, psh_ch, 3000000);
+                if (psh_dbg_err) {
+                        dev_err(dev, "Send ia2psh command failed, err %d\n", psh_dbg_err);
+                        psh_regs_dump(ipcdev);
+                        return psh_dbg_err;
+                } else {
+                        psh_dbg_msg.msg = out_msg.msg;
+                        psh_dbg_msg.param = out_msg.param;
+                }
+		return size;
+	} else {
+                int len = strlen(CMD_DUMP);
+                if (size >= len && strncmp(buf, CMD_DUMP, len) == 0) {
+                        psh_regs_dump(ipcdev);
+                        return size;
+                }
+        }
+	pr_err("Please provide right string as [%s] | [%s]!\n", CMD_EXECUTE, CMD_DUMP);
+	return -1;
 
-       psh_dbg_err = intel_ia2psh_command(&psh_dbg_msg, &out_msg, psh_ch, 3000000);
-       if (psh_dbg_err) {
-               dev_err(dev, "Send ia2psh command failed, err %d\n", psh_dbg_err);
-               psh_regs_dump(ipcdev);
-               return psh_dbg_err;
-       }
-
-       return size;
 }
 
 static DEVICE_ATTR(psh_msg, S_IRUGO | S_IWUSR, psh_msg_show, psh_msg_store);
@@ -458,7 +474,7 @@ static int psh_ipc_probe(struct pci_dev *pdev, const struct pci_device_id *id)
        struct ipc_controller_t *ipcdev;
        unsigned int i;
        int ret;
-
+        pr_info("intel psh ipc pci prepare...\n");
        ret = pcim_enable_device(pdev);
        if (ret)
                return ret;
@@ -491,6 +507,7 @@ static int psh_ipc_probe(struct pci_dev *pdev, const struct pci_device_id *id)
        irq_set_irq_wake(pdev->irq, 1);
 
        ipc_ctrl = ipcdev;
+       pr_info("intel psh ipc ipc_ctrl ready.\n");
        pci_set_drvdata(pdev, ipcdev);
 
        intel_psh_debug_sysfs_create(&pdev->dev);
@@ -498,6 +515,7 @@ static int psh_ipc_probe(struct pci_dev *pdev, const struct pci_device_id *id)
        pm_runtime_put_noidle(&pdev->dev);
        pm_runtime_allow(&pdev->dev);
 
+       pr_info("intel psh ipc done.\n");
        return 0;
 }
 

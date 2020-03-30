@@ -889,6 +889,7 @@ static int mrfld_pinctrl_probe(struct platform_device *pdev)
 	size_t nfamilies;
 	unsigned int i;
 
+	pr_info("mrfld pinctrl probe...\n");
 	mp = devm_kzalloc(&pdev->dev, sizeof(*mp), GFP_KERNEL);
 	if (!mp)
 		return -ENOMEM;
@@ -936,6 +937,7 @@ static int mrfld_pinctrl_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, mp);
+	pr_info("mrfld pinctrl ready.\n");
 	return 0;
 }
 

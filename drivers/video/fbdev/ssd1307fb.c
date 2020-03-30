@@ -599,6 +599,7 @@ static int ssd1307fb_probe(struct i2c_client *client,
 	void *vmem;
 	int ret;
 
+	pr_info("ssd130xfb probe...\n");
 	if (!node) {
 		dev_err(&client->dev, "No device tree data found!\n");
 		return -EINVAL;
@@ -731,7 +732,7 @@ static int ssd1307fb_probe(struct i2c_client *client,
 			goto reset_oled_error;
 		}
 	}
-
+	pr_info("ssd130xfb init...\n");
 	ret = ssd1307fb_init(par);
 	if (ret)
 		goto regulator_enable_error;

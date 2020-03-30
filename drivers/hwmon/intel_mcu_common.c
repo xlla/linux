@@ -274,8 +274,9 @@ static ssize_t get_ver_show(struct device *device,
 {
 	struct mcu_data *data = mcu_table[2];
 	struct mcu *mcu = data->mcu;
-
-	if (do_get_ver(data))
+	int ret = do_get_ver(data);
+	if (ret)
+		pr_debug("get ver ret %d \n", ret);
 		return -1;
 
 	return scnprintf(buf, VER_LEN, "%s", mcu->ver);
@@ -334,9 +335,9 @@ static ssize_t mdbg_control_store(struct device *device,
 	return count;
 }
 
-static DEVICE_ATTR(control, 0200, NULL, load_app_store);
-static DEVICE_ATTR(fw_version, 0400, get_ver_show, NULL);
-static DEVICE_ATTR(log_level, 0600, mdbg_control_show, mdbg_control_store);
+static DEVICE_ATTR(control, S_IWUSR, NULL, load_app_store);
+static DEVICE_ATTR(fw_version, S_IRUSR, get_ver_show, NULL);
+static DEVICE_ATTR(log_level, S_IRUSR | S_IWUSR, mdbg_control_show, mdbg_control_store);
 
 static struct attribute *control_sysfs_attrs[] = {
 	&dev_attr_control.attr,
@@ -509,7 +510,9 @@ static int mcu_platform_probe(struct platform_device *pdev)
 	struct mcu *mcu;
 	u8 *base;
 
+	pr_info("mcu platform prepare...\n");
 	mcu = platform_get_drvdata(pdev);
+	pr_info("mcu tty prepare...\n");
 	intel_mcu_tty_driver = alloc_tty_driver(INTEL_MCU_TTY_MINORS);
 	if (!intel_mcu_tty_driver) {
 		dev_err(&pdev->dev, "fail to alloc tty driver\n");
@@ -539,6 +542,7 @@ static int mcu_platform_probe(struct platform_device *pdev)
 		goto tty_reg_fail;
 	}
 
+	pr_info("mcu tty create...\n");
 	base = (u8 *)mcu->ddr[1];
 	for (i = INTEL_MCU_TTY_MINORS - 1; i >= 0; i--) {
 		data = kzalloc(sizeof(struct mcu_data), GFP_KERNEL);
@@ -567,10 +571,17 @@ static int mcu_platform_probe(struct platform_device *pdev)
 				&intel_mcu_tty_attribute_group);
 		goto data_alloc_fail;
 	}
+	pr_info("mcu tty created.\n");
 
-	intel_psh_ipc_bind(PSH_RECV_CH0, raw_data_handler, mcu_table[0]);
-	intel_psh_ipc_bind(PSH_RECV_CH1, raw_data_handler, mcu_table[1]);
-	intel_psh_ipc_bind(PSH_RECV_CH2, cmd_handler, mcu_table[2]);
+	ret = intel_psh_ipc_bind(PSH_RECV_CH0, raw_data_handler, mcu_table[0]);
+	if (ret) 
+		pr_err("failed to bind ch0, %d\n", ret);
+	ret = intel_psh_ipc_bind(PSH_RECV_CH1, raw_data_handler, mcu_table[1]);
+	if (ret) 
+		pr_err("failed to bind ch1, %d\n", ret);
+	ret = intel_psh_ipc_bind(PSH_RECV_CH2, cmd_handler, mcu_table[2]);
+	if (ret) 
+		pr_err("failed to bind ch2, %d\n", ret);
 
 	pr_info("MCU detected and ready to used!\n");
 
@@ -615,10 +626,10 @@ static int intel_mcu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	struct platform_device *dev;
 	struct mcu *mcu;
 	int ret;
-
+	pr_info("mcu pci register...\n");
 	ret = pci_enable_device(pdev);
 	if (ret) {
-		dev_err(&pdev->dev, "fail to enable psh pci device\n");
+		dev_err(&pdev->dev, "fail to enable mcu pci device\n");
 		return -ENODEV;
 	}
 
@@ -648,6 +659,7 @@ static int intel_mcu_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	dev_set_drvdata(&pdev->dev, mcu);
 
 	ret = platform_device_add(dev);
+	pr_info("mcu pci register done.\n");
 	return ret;
 
 plat_alloc_fail:
@@ -682,19 +694,19 @@ static struct pci_driver intel_mcu_driver = {
 	.probe	= intel_mcu_probe,
 	.remove	= intel_mcu_remove,
 };
-
 static int __init intel_mcu_init(void)
 {
-	return pci_register_driver(&intel_mcu_driver);
+        return pci_register_driver(&intel_mcu_driver);
 }
 
 static void __exit intel_mcu_exit(void)
 {
-	pci_unregister_driver(&intel_mcu_driver);
+        pci_unregister_driver(&intel_mcu_driver);
 }
 
-module_init(intel_mcu_init);
+late_initcall(intel_mcu_init);
 module_exit(intel_mcu_exit);
+// module_pci_driver(intel_mcu_driver);
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_LICENSE("GPL");
