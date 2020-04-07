@@ -370,9 +370,10 @@ static int ti_ads7950_read_raw(struct iio_dev *indio_dev,
 {
 	struct ti_ads7950_state *st = iio_priv(indio_dev);
 	int ret;
-
+	pr_info("ads7950 read raw: %d.\n", chan->channel);
 	switch (m) {
 	case IIO_CHAN_INFO_RAW:
+		pr_info("ads7950 read raw, raw.\n");
 		ret = ti_ads7950_scan_direct(indio_dev, chan->address);
 		if (ret < 0)
 			return ret;
@@ -385,6 +386,7 @@ static int ti_ads7950_read_raw(struct iio_dev *indio_dev,
 
 		return IIO_VAL_INT;
 	case IIO_CHAN_INFO_SCALE:
+		pr_info("ads7950 read raw, scale.\n");
 		ret = ti_ads7950_get_range(st);
 		if (ret < 0)
 			return ret;

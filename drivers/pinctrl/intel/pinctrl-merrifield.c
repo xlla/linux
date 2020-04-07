@@ -16,6 +16,7 @@
 #include <linux/pinctrl/pinconf-generic.h>
 #include <linux/pinctrl/pinctrl.h>
 #include <linux/pinctrl/pinmux.h>
+#include <asm/intel_scu_ipc.h>
 
 #include "pinctrl-intel.h"
 
@@ -53,36 +54,40 @@
 #define BUFCFG_OUTDATAOV_MASK		GENMASK(19, 18)
 #define BUFCFG_OD_EN			BIT(21)
 
+enum mrfld_protected {
+	PROTECTED_NONE,
+	PROTECTED_READ,
+	PROTECTED_WRITE,
+	PROTECTED_FULL,
+};
 /**
  * struct mrfld_family - Intel pin family description
  * @barno: MMIO BAR number where registers for this family reside
  * @pin_base: Starting pin of pins in this family
  * @npins: Number of pins in this family
- * @protected: True if family is protected by access
+ * @protected: Level of protection if family is protected by access
  * @regs: family specific common registers
+ * @phys: Physical address of family specific common registers
  */
 struct mrfld_family {
 	unsigned int barno;
 	unsigned int pin_base;
 	size_t npins;
-	bool protected;
+	enum mrfld_protected protected;
 	void __iomem *regs;
+	phys_addr_t phys;
 };
 
-#define MRFLD_FAMILY(b, s, e)				\
+
+#define MRFLD_FAMILY_PROTECTED(b, s, e, _p_)			\
 	{						\
 		.barno = (b),				\
 		.pin_base = (s),			\
 		.npins = (e) - (s) + 1,			\
+		.protected = PROTECTED_##_p_,		\
 	}
 
-#define MRFLD_FAMILY_PROTECTED(b, s, e)			\
-	{						\
-		.barno = (b),				\
-		.pin_base = (s),			\
-		.npins = (e) - (s) + 1,			\
-		.protected = true,			\
-	}
+#define MRFLD_FAMILY(b, s, e)	MRFLD_FAMILY_PROTECTED(b, s, e, NONE)
 
 static const struct pinctrl_pin_desc mrfld_pins[] = {
 	/* Family 0: OCP2SSC (0 pins) */
@@ -390,12 +395,12 @@ static const struct mrfld_family mrfld_families[] = {
 	MRFLD_FAMILY(4, 57, 64),
 	MRFLD_FAMILY(5, 65, 78),
 	MRFLD_FAMILY(6, 79, 100),
-	MRFLD_FAMILY_PROTECTED(7, 101, 114),
+	MRFLD_FAMILY_PROTECTED(7, 101, 114, WRITE),
 	MRFLD_FAMILY(8, 115, 126),
 	MRFLD_FAMILY(9, 127, 145),
 	MRFLD_FAMILY(10, 146, 157),
 	MRFLD_FAMILY(11, 158, 179),
-	MRFLD_FAMILY_PROTECTED(12, 180, 194),
+	MRFLD_FAMILY_PROTECTED(12, 180, 194, FULL),
 	MRFLD_FAMILY(13, 195, 214),
 	MRFLD_FAMILY(14, 215, 227),
 	MRFLD_FAMILY(15, 228, 232),
@@ -452,15 +457,15 @@ static const struct mrfld_family *mrfld_get_family(struct mrfld_pinctrl *mp,
 	return NULL;
 }
 
-static bool mrfld_buf_available(struct mrfld_pinctrl *mp, unsigned int pin)
+static int mrfld_buf_available(struct mrfld_pinctrl *mp, unsigned int pin)
 {
 	const struct mrfld_family *family;
 
 	family = mrfld_get_family(mp, pin);
 	if (!family)
-		return false;
+		return -EINVAL;
 
-	return !family->protected;
+	return family->protected == PROTECTED_FULL ? -EACCES : family->protected;
 }
 
 static void __iomem *mrfld_get_bufcfg(struct mrfld_pinctrl *mp, unsigned int pin)
@@ -479,9 +484,11 @@ static void __iomem *mrfld_get_bufcfg(struct mrfld_pinctrl *mp, unsigned int pin
 static int mrfld_read_bufcfg(struct mrfld_pinctrl *mp, unsigned int pin, u32 *value)
 {
 	void __iomem *bufcfg;
+	int ret;
 
-	if (!mrfld_buf_available(mp, pin))
-		return -EBUSY;
+	ret = mrfld_buf_available(mp, pin);
+	if (ret < 0)
+		return ret;
 
 	bufcfg = mrfld_get_bufcfg(mp, pin);
 	*value = readl(bufcfg);
@@ -503,6 +510,37 @@ static void mrfld_update_bufcfg(struct mrfld_pinctrl *mp, unsigned int pin,
 
 	writel(value, bufcfg);
 }
+
+static phys_addr_t mrfld_get_phys(struct mrfld_pinctrl *mp, unsigned int pin)
+{
+	const struct mrfld_family *family;
+	unsigned int bufno;
+
+	family = mrfld_get_family(mp, pin);
+	if (!family)
+		return 0;
+
+	bufno = pin_to_bufno(family, pin);
+	return family->phys + BUFCFG_OFFSET + bufno * 4;
+}
+
+static int mrfld_update_phys(struct mrfld_pinctrl *mp, unsigned int pin,
+			     u32 bits, u32 mask)
+{
+	int cmd = IPCMSG_INDIRECT_WRITE;
+	void __iomem *bufcfg;
+	phys_addr_t phys;
+	u32 v, value;
+
+	bufcfg = mrfld_get_bufcfg(mp, pin);
+	value = readl(bufcfg);
+
+	v = (value & ~mask) | (bits & mask);
+
+	phys = mrfld_get_phys(mp, pin);
+	return intel_scu_ipc_raw_command(cmd, 0, (u8 *)&v, 4, NULL, 0, phys, 0);
+}
+
 
 static int mrfld_get_groups_count(struct pinctrl_dev *pctldev)
 {
@@ -593,16 +631,27 @@ static int mrfld_pinmux_set_mux(struct pinctrl_dev *pctldev,
 	const struct intel_pingroup *grp = &mp->groups[group];
 	u32 bits = grp->mode << BUFCFG_PINMODE_SHIFT;
 	u32 mask = BUFCFG_PINMODE_MASK;
+	bool protected = false;
 	unsigned long flags;
 	unsigned int i;
+	int ret;
 
 	/*
 	 * All pins in the groups needs to be accessible and writable
 	 * before we can enable the mux for this group.
 	 */
 	for (i = 0; i < grp->npins; i++) {
-		if (!mrfld_buf_available(mp, grp->pins[i]))
-			return -EBUSY;
+		ret = mrfld_buf_available(mp, grp->pins[i]);
+		if (ret < 0)
+			return ret;
+		if (ret > 0)
+			protected = true;
+	}
+
+	if (protected) {
+		for (i = 0; i < grp->npins; i++)
+			mrfld_update_phys(mp, grp->pins[i], bits, mask);
+		return 0;
 	}
 
 	/* Now enable the mux setting for each pin in the group */
@@ -622,9 +671,13 @@ static int mrfld_gpio_request_enable(struct pinctrl_dev *pctldev,
 	u32 bits = BUFCFG_PINMODE_GPIO << BUFCFG_PINMODE_SHIFT;
 	u32 mask = BUFCFG_PINMODE_MASK;
 	unsigned long flags;
+	int ret;
 
-	if (!mrfld_buf_available(mp, pin))
-		return -EBUSY;
+	ret = mrfld_buf_available(mp, pin);
+	if (ret < 0)
+		return ret;
+	if (ret > 0)
+		return mrfld_update_phys(mp, pin, bits, mask);
 
 	raw_spin_lock_irqsave(&mp->lock, flags);
 	mrfld_update_bufcfg(mp, pin, bits, mask);
@@ -725,7 +778,7 @@ static int mrfld_config_get(struct pinctrl_dev *pctldev, unsigned int pin,
 }
 
 static int mrfld_config_set_pin(struct mrfld_pinctrl *mp, unsigned int pin,
-				unsigned long config)
+				unsigned long config, bool protected)
 {
 	unsigned int param = pinconf_to_config_param(config);
 	unsigned int arg = pinconf_to_config_argument(config);
@@ -790,6 +843,9 @@ static int mrfld_config_set_pin(struct mrfld_pinctrl *mp, unsigned int pin,
 		break;
 	}
 
+	if (protected)
+		return mrfld_update_phys(mp, pin, bits, mask);
+
 	raw_spin_lock_irqsave(&mp->lock, flags);
 	mrfld_update_bufcfg(mp, pin, bits, mask);
 	raw_spin_unlock_irqrestore(&mp->lock, flags);
@@ -801,11 +857,15 @@ static int mrfld_config_set(struct pinctrl_dev *pctldev, unsigned int pin,
 			    unsigned long *configs, unsigned int nconfigs)
 {
 	struct mrfld_pinctrl *mp = pinctrl_dev_get_drvdata(pctldev);
+	bool protected = false;
 	unsigned int i;
 	int ret;
 
-	if (!mrfld_buf_available(mp, pin))
+	ret = mrfld_buf_available(mp, pin);
+	if (ret < 0)
 		return -ENOTSUPP;
+	if (ret > 0)
+		protected = true;
 
 	for (i = 0; i < nconfigs; i++) {
 		switch (pinconf_to_config_param(configs[i])) {
@@ -814,7 +874,7 @@ static int mrfld_config_set(struct pinctrl_dev *pctldev, unsigned int pin,
 		case PIN_CONFIG_BIAS_PULL_DOWN:
 		case PIN_CONFIG_DRIVE_OPEN_DRAIN:
 		case PIN_CONFIG_SLEW_RATE:
-			ret = mrfld_config_set_pin(mp, pin, configs[i]);
+			ret = mrfld_config_set_pin(mp, pin, configs[i], protected);
 			if (ret)
 				return ret;
 			break;
@@ -885,9 +945,11 @@ static int mrfld_pinctrl_probe(struct platform_device *pdev)
 {
 	struct mrfld_family *families;
 	struct mrfld_pinctrl *mp;
+	struct resource *mem;
 	void __iomem *regs;
 	size_t nfamilies;
 	unsigned int i;
+	// struct gpio_debug *debug;
 
 	pr_info("mrfld pinctrl probe...\n");
 	mp = devm_kzalloc(&pdev->dev, sizeof(*mp), GFP_KERNEL);
@@ -897,7 +959,9 @@ static int mrfld_pinctrl_probe(struct platform_device *pdev)
 	mp->dev = &pdev->dev;
 	raw_spin_lock_init(&mp->lock);
 
-	regs = devm_platform_ioremap_resource(pdev, 0);
+	//migrate from 7bd4227147c19860a915de6b0c775babb85c41c4
+	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	regs = devm_ioremap_resource(&pdev->dev, mem);
 	if (IS_ERR(regs))
 		return PTR_ERR(regs);
 
@@ -917,6 +981,7 @@ static int mrfld_pinctrl_probe(struct platform_device *pdev)
 		struct mrfld_family *family = &families[i];
 
 		family->regs = regs + family->barno * MRFLD_FAMILY_LEN;
+		family->phys = mem->start + family->barno * MRFLD_FAMILY_LEN;
 	}
 
 	mp->families = families;
@@ -938,6 +1003,38 @@ static int mrfld_pinctrl_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, mp);
 	pr_info("mrfld pinctrl ready.\n");
+
+	/* add for gpiodebug */
+	// pr_info("mrfld pinctrl add debugfs...\n");
+	// debug = gpio_debug_alloc();
+	// if (debug) {
+	// 	__set_bit(TYPE_OVERRIDE_OUTDIR, debug->typebit);
+	// 	__set_bit(TYPE_OVERRIDE_OUTVAL, debug->typebit);
+	// 	__set_bit(TYPE_OVERRIDE_INDIR, debug->typebit);
+	// 	__set_bit(TYPE_OVERRIDE_INVAL, debug->typebit);
+	// 	__set_bit(TYPE_SBY_OVR_IO, debug->typebit);
+	// 	__set_bit(TYPE_SBY_OVR_OUTVAL, debug->typebit);
+	// 	__set_bit(TYPE_SBY_OVR_INVAL, debug->typebit);
+	// 	__set_bit(TYPE_SBY_OVR_OUTDIR, debug->typebit);
+	// 	__set_bit(TYPE_SBY_OVR_INDIR, debug->typebit);
+	// 	__set_bit(TYPE_SBY_PUPD_STATE, debug->typebit);
+	// 	__set_bit(TYPE_SBY_OD_DIS, debug->typebit);
+
+	// 	debug->chip = &lnw->chip;
+	// 	debug->ops = &lnw_gpio_debug_ops;
+	// 	debug->private_data = lnw;
+	// 	lnw->debug = debug;
+
+	// 	retval = gpio_debug_register(debug);
+	// 	if (retval) {
+	// 		dev_err(&pdev->dev, "langwell gpio_debug_register failed %d\n",
+	// 			retval);
+	// 		gpio_debug_remove(debug);
+	// 	}
+	// 	pr_info("mrfld pinctrl debugfs ready.\n");
+	// }
+
+
 	return 0;
 }
 
