@@ -17,6 +17,9 @@
 #include <linux/pinctrl/pinctrl.h>
 #include <linux/pinctrl/pinmux.h>
 #include <asm/intel_scu_ipc.h>
+#include <linux/debugfs.h>
+#include <linux/slab.h>
+#include <linux/uaccess.h>
 
 #include "pinctrl-intel.h"
 
@@ -344,6 +347,7 @@ static const struct pinctrl_pin_desc mrfld_pins[] = {
 	/* Family 18: Broadcast (0 pins) */
 };
 
+static const unsigned int mrfld_i2s2_pins[] = { 40, 41, 42, 43 };
 static const unsigned int mrfld_sdio_pins[] = { 50, 51, 52, 53, 54, 55, 56 };
 static const unsigned int mrfld_spi5_pins[] = { 90, 91, 92, 93, 94, 95, 96 };
 static const unsigned int mrfld_uart0_pins[] = { 115, 116, 117, 118 };
@@ -355,6 +359,7 @@ static const unsigned int mrfld_pwm2_pins[] = { 132 };
 static const unsigned int mrfld_pwm3_pins[] = { 133 };
 
 static const struct intel_pingroup mrfld_groups[] = {
+	PIN_GROUP("i2s2_grp", mrfld_i2s2_pins, 1),
 	PIN_GROUP("sdio_grp", mrfld_sdio_pins, 1),
 	PIN_GROUP("spi5_grp", mrfld_spi5_pins, 1),
 	PIN_GROUP("uart0_grp", mrfld_uart0_pins, 1),
@@ -366,6 +371,7 @@ static const struct intel_pingroup mrfld_groups[] = {
 	PIN_GROUP("pwm3_grp", mrfld_pwm3_pins, 1),
 };
 
+static const char * const mrfld_i2s2_groups[] = { "i2s2_grp" };
 static const char * const mrfld_sdio_groups[] = { "sdio_grp" };
 static const char * const mrfld_spi5_groups[] = { "spi5_grp" };
 static const char * const mrfld_uart0_groups[] = { "uart0_grp" };
@@ -377,6 +383,7 @@ static const char * const mrfld_pwm2_groups[] = { "pwm2_grp" };
 static const char * const mrfld_pwm3_groups[] = { "pwm3_grp" };
 
 static const struct intel_function mrfld_functions[] = {
+	FUNCTION("i2s2", mrfld_i2s2_groups),
 	FUNCTION("sdio", mrfld_sdio_groups),
 	FUNCTION("spi5", mrfld_spi5_groups),
 	FUNCTION("uart0", mrfld_uart0_groups),
@@ -627,6 +634,7 @@ static int mrfld_pinmux_set_mux(struct pinctrl_dev *pctldev,
 				unsigned int function,
 				unsigned int group)
 {
+	pr_info("mrfld pinctrl mux, group[%d], function[%d] \n", group, function);
 	struct mrfld_pinctrl *mp = pinctrl_dev_get_drvdata(pctldev);
 	const struct intel_pingroup *grp = &mp->groups[group];
 	u32 bits = grp->mode << BUFCFG_PINMODE_SHIFT;
@@ -667,6 +675,7 @@ static int mrfld_gpio_request_enable(struct pinctrl_dev *pctldev,
 				     struct pinctrl_gpio_range *range,
 				     unsigned int pin)
 {
+	pr_info("mrfld pinctrl gpio enalbe, pin[%d] \n", pin);
 	struct mrfld_pinctrl *mp = pinctrl_dev_get_drvdata(pctldev);
 	u32 bits = BUFCFG_PINMODE_GPIO << BUFCFG_PINMODE_SHIFT;
 	u32 mask = BUFCFG_PINMODE_MASK;
@@ -853,6 +862,7 @@ static int mrfld_config_set_pin(struct mrfld_pinctrl *mp, unsigned int pin,
 	return 0;
 }
 
+
 static int mrfld_config_set(struct pinctrl_dev *pctldev, unsigned int pin,
 			    unsigned long *configs, unsigned int nconfigs)
 {
@@ -912,6 +922,7 @@ static int mrfld_config_group_set(struct pinctrl_dev *pctldev,
 	const unsigned int *pins;
 	unsigned int npins;
 	int i, ret;
+	pr_info("mrfld pinctrl config group, group[%d], configs[%d] \n", group, num_configs);
 
 	ret = mrfld_get_group_pins(pctldev, group, &pins, &npins);
 	if (ret)
@@ -941,6 +952,211 @@ static const struct pinctrl_desc mrfld_pinctrl_desc = {
 	.owner = THIS_MODULE,
 };
 
+#ifdef CONFIG_DEBUG_FS
+static int mrfld_pinctrl_pinmux_open(struct inode *inode, struct file *filp)  
+ 
+{  
+    filp->private_data = inode->i_private;  
+    return 0;   
+}   
+
+static int find_pin_number_by_name(char* name) {
+	unsigned int i, j, k;
+	int pin, pins;
+	const char* left, *right;
+	pins = ARRAY_SIZE(mrfld_pins);
+	pin = -1;
+	for(i = 0; i< pins; i++) {
+		right = mrfld_pins[i].name;
+		k = strchr(right, '_') - right;
+		if (k > 0) {
+			//this pin has multiple functions
+			left = name;
+			for(j = 0; j< k;j++, left++, right++) {
+				if(*left == 0 || *left != *right)
+					break;
+			}
+			if(j == k) {
+				pin = mrfld_pins[i].number;
+				break;
+			}
+		}
+	
+	}
+
+	return pin;
+}
+
+static ssize_t mrfld_pinctrl_pinmux_set(struct file *filp, const char __user *ubuf,
+			size_t cnt, loff_t *ppos)
+{
+	struct pinctrl_dev *pctldev = filp->private_data;
+	struct mrfld_pinctrl *mp = pinctrl_dev_get_drvdata(pctldev);
+	const struct intel_pingroup *grp;
+	bool protected = false;
+	bool allowed = false;
+	unsigned long flags;
+	unsigned int i, j, mode, pin, group;
+	u32 bits, mask;
+	ssize_t ret = 0;
+	char *buf, *start, *end, *pinname;
+
+	char *i2c6[] = {"GP27", "GP28"};
+
+	if (*ppos < 0 || !cnt)
+		return -EINVAL;
+
+	buf = kzalloc(cnt, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (copy_from_user(buf, ubuf, cnt))
+		return -EFAULT;
+
+	//skip space
+	start = buf;
+	j = 0;
+	while (*start == ' ' && j < cnt) {
+		start++; j++;
+	}
+
+	//arg pin
+	end = start;
+	while (*end != ' ' && j < cnt) {
+		end++; j++;
+	}
+	buf[j] = 0;
+	pinname = start;
+
+	//arg mode
+	end++; j++;
+	if(j < cnt) {
+		start = end;
+		while (*start == ' ' && j < cnt) {
+			start++; j++;
+		}
+
+		end = start;
+		while (*end != ' ' && j < cnt) {
+			end++; j++;
+		}
+		buf[j] = 0;
+		if (kstrtouint(start, 10, &mode))
+			return -EINVAL;
+		//invalid mode
+		if (mode > 2) 
+			return -EINVAL;
+	} else {
+		return -EINVAL;
+	}
+
+	pr_info("mrfld pinctrl pinmux, pin[%s], mode[%d] \n", pinname, mode);
+	//find out pin
+	pin = find_pin_number_by_name(pinname);
+	if (pin < 0)
+		return -EINVAL;
+	pr_info("mrfld pinctrl pinmux, number[%d], mode[%d] \n", pin, mode);
+	
+	//only pin in known groups or is I2C-6 pin allowed do pinmux
+	for(i=0;i<ARRAY_SIZE(i2c6);i++) {
+		if(strcmp(pinname, i2c6[i]) == 0) {
+			allowed = true;
+			break;
+		}
+	}
+	if(!allowed) {
+		mp = pinctrl_dev_get_drvdata(pctldev);
+		for(group = 0; group < mp->ngroups; group++) {
+			grp = &mp->groups[group];
+			pr_info("mrfld pinctrl pinmux, search in group[%s],pins[%d] \n",grp->name, grp->npins);
+			for (i = 0; i < grp->npins; i++) {
+				if (pin == grp->pins[i]) {
+					pr_info("mrfld pinctrl pinmux,found group \n");
+					allowed = true;
+					break; 
+				}
+			}
+			if(allowed) break;
+		}
+	}
+
+	pr_info("mrfld pinctrl pinmux, pin[%d], allowed[%d] \n", pin, allowed);
+	if(allowed) {
+		/*
+		* pin needs to be accessible and writable
+		* before we can enable the mux for this pin.
+		*/
+		ret = mrfld_buf_available(mp, pin);
+		if (ret < 0)
+			return ret;
+		if (ret > 0)
+			protected = true;
+
+		bits = mode << BUFCFG_PINMODE_SHIFT;
+		mask = BUFCFG_PINMODE_MASK;
+		ret = cnt;
+		pr_info("mrfld pinctrl pinmux, protected[%d] \n", protected);
+
+		if (protected) {
+			mrfld_update_phys(mp, pin, bits, mask);
+			return ret;
+		}
+
+		/* Now enable the mux setting for each pin in the group */
+		raw_spin_lock_irqsave(&mp->lock, flags);
+		mrfld_update_bufcfg(mp, pin, bits, mask);
+		raw_spin_unlock_irqrestore(&mp->lock, flags);
+
+	}
+
+	return ret;
+}
+static const char rfld_pinctrl_pinmux_readme_msg[] =
+	"\n GPIO soc pinmode Debug Tool-HOWTO (Example):\n\n"
+	"# echo [GP12-183] [mode 0/1/2] > /sys/kernel/debug/pinctrl_pinmux/pinmux\n"
+	"#   [GPn] must support Soc pin modes, [mode] should available for GPn. \n"
+	"# it is not check potential conflict, make sure before use.\n"
+	"# good lucky!\n";
+static ssize_t mrfld_pinctrl_pinmux_get(struct file *filp, char __user *ubuf,
+			size_t cnt, loff_t *ppos)
+{
+	
+	ssize_t ret = 0;
+	if (*ppos < 0 || !cnt)
+		return -EINVAL;
+	ret = simple_read_from_buffer(ubuf, cnt, ppos, rfld_pinctrl_pinmux_readme_msg,
+		strlen(rfld_pinctrl_pinmux_readme_msg));
+
+
+	return ret;
+}
+
+static const struct file_operations mrfld_pinctrl_pinmux_fops = {		
+	.owner		= THIS_MODULE,				
+	.open		= mrfld_pinctrl_pinmux_open,			
+	.read		= mrfld_pinctrl_pinmux_get,				
+	.write      = mrfld_pinctrl_pinmux_set,			
+};
+static struct dentry *debugfs_root;
+static void mrfld_pinctrl_debugfs_init(struct pinctrl_dev *pctldev)
+{
+    debugfs_root = debugfs_create_dir("pinctrl_pinmux", NULL);
+    if (IS_ERR(debugfs_root) || !debugfs_root) {
+        pr_warn("failed to create debugfs directory\n");
+        debugfs_root = NULL;
+        return;
+    }
+    debugfs_create_file("pinmux", S_IFREG | S_IRUGO,
+                debugfs_root, pctldev, &mrfld_pinctrl_pinmux_fops);
+}
+static void mrfld_pinctrl_debugfs_exit(void) 
+{
+	debugfs_remove_recursive(debugfs_root);
+}
+#else
+static inline void mrfld_pinctrl_debugfs_init(struct pinctrl_dev *pctldev) {}
+static inline void mrfld_pinctrl_debugfs_exit(void) {}
+#endif
 static int mrfld_pinctrl_probe(struct platform_device *pdev)
 {
 	struct mrfld_family *families;
@@ -1004,39 +1220,14 @@ static int mrfld_pinctrl_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, mp);
 	pr_info("mrfld pinctrl ready.\n");
 
-	/* add for gpiodebug */
-	// pr_info("mrfld pinctrl add debugfs...\n");
-	// debug = gpio_debug_alloc();
-	// if (debug) {
-	// 	__set_bit(TYPE_OVERRIDE_OUTDIR, debug->typebit);
-	// 	__set_bit(TYPE_OVERRIDE_OUTVAL, debug->typebit);
-	// 	__set_bit(TYPE_OVERRIDE_INDIR, debug->typebit);
-	// 	__set_bit(TYPE_OVERRIDE_INVAL, debug->typebit);
-	// 	__set_bit(TYPE_SBY_OVR_IO, debug->typebit);
-	// 	__set_bit(TYPE_SBY_OVR_OUTVAL, debug->typebit);
-	// 	__set_bit(TYPE_SBY_OVR_INVAL, debug->typebit);
-	// 	__set_bit(TYPE_SBY_OVR_OUTDIR, debug->typebit);
-	// 	__set_bit(TYPE_SBY_OVR_INDIR, debug->typebit);
-	// 	__set_bit(TYPE_SBY_PUPD_STATE, debug->typebit);
-	// 	__set_bit(TYPE_SBY_OD_DIS, debug->typebit);
-
-	// 	debug->chip = &lnw->chip;
-	// 	debug->ops = &lnw_gpio_debug_ops;
-	// 	debug->private_data = lnw;
-	// 	lnw->debug = debug;
-
-	// 	retval = gpio_debug_register(debug);
-	// 	if (retval) {
-	// 		dev_err(&pdev->dev, "langwell gpio_debug_register failed %d\n",
-	// 			retval);
-	// 		gpio_debug_remove(debug);
-	// 	}
-	// 	pr_info("mrfld pinctrl debugfs ready.\n");
-	// }
-
+	/* add for pinmux */
+	pr_info("mrfld pinctrl add debugfs...\n");
+	mrfld_pinctrl_debugfs_init(mp->pctldev);
+	pr_info("mrfld pinctrl debugfs ready.\n");
 
 	return 0;
 }
+
 
 static const struct acpi_device_id mrfld_acpi_table[] = {
 	{ "INTC1002" },
@@ -1060,6 +1251,7 @@ subsys_initcall(mrfld_pinctrl_init);
 
 static void __exit mrfld_pinctrl_exit(void)
 {
+	mrfld_pinctrl_debugfs_exit();
 	platform_driver_unregister(&mrfld_pinctrl_driver);
 }
 module_exit(mrfld_pinctrl_exit);
