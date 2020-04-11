@@ -285,7 +285,7 @@ static int ti_ads7950_update_scan_mode(struct iio_dev *indio_dev,
 {
 	struct ti_ads7950_state *st = iio_priv(indio_dev);
 	int i, cmd, len;
-
+	pr_info("ads7950 update scan modev[%lu].\n", *active_scan_mask);
 	len = 0;
 	for_each_set_bit(i, active_scan_mask, indio_dev->num_channels) {
 		cmd = TI_ADS7950_MAN_CMD(TI_ADS7950_CR_CHAN(i));
@@ -327,16 +327,19 @@ static int ti_ads7950_scan_direct(struct iio_dev *indio_dev, unsigned int ch)
 {
 	struct ti_ads7950_state *st = iio_priv(indio_dev);
 	int ret, cmd;
-
+	pr_info("ads7950 scan dir, ch [%d].\n", ch);
 	mutex_lock(&st->slock);
 	cmd = TI_ADS7950_MAN_CMD(TI_ADS7950_CR_CHAN(ch));
+	pr_info("ads7950 scan dir, cmd [%x]\n", cmd);
 	st->single_tx = cmd;
 
 	ret = spi_sync(st->spi, &st->scan_single_msg);
+	pr_info("ads7950 scan dir, ret [%d].\n", ret);
 	if (ret)
 		goto out;
 
 	ret = st->single_rx;
+	pr_info("ads7950 scan dir, rx [%d].\n", ret);
 
 out:
 	mutex_unlock(&st->slock);
@@ -370,19 +373,22 @@ static int ti_ads7950_read_raw(struct iio_dev *indio_dev,
 {
 	struct ti_ads7950_state *st = iio_priv(indio_dev);
 	int ret;
-	pr_info("ads7950 read raw: %d.\n", chan->channel);
+	pr_info("ads7950 read raw: ch[%d].\n", chan->channel);
 	switch (m) {
 	case IIO_CHAN_INFO_RAW:
-		pr_info("ads7950 read raw, raw.\n");
+		pr_info("ads7950 read raw, scan direct, address [%lu].\n", chan->address);
 		ret = ti_ads7950_scan_direct(indio_dev, chan->address);
 		if (ret < 0)
 			return ret;
 
-		if (chan->address != TI_ADS7950_EXTRACT(ret, 12, 4))
+		pr_info("ads7950 read raw, ret[%d] expect addr[%x].\n",ret, TI_ADS7950_EXTRACT(ret, 12, 4));
+		pr_info("ads7950 read raw, (8,4) addr[%x].\n",ret, TI_ADS7950_EXTRACT(ret, 11, 4));
+		if (chan->address != TI_ADS7950_EXTRACT(ret, 11, 4))
 			return -EIO;
 
 		*val = TI_ADS7950_EXTRACT(ret, chan->scan_type.shift,
-					  chan->scan_type.realbits);
+					  11);
+		pr_info("ads7950 read raw, shift[%d], realbits[%d], val [%d].\n",  chan->scan_type.shift, chan->scan_type.realbits, *val);
 
 		return IIO_VAL_INT;
 	case IIO_CHAN_INFO_SCALE:
@@ -428,6 +434,9 @@ static int ti_ads7950_get(struct gpio_chip *chip, unsigned int offset)
 	struct ti_ads7950_state *st = gpiochip_get_data(chip);
 	int ret;
 
+
+	pr_info("ads7950 get chip[%s], offset[%d].\n", chip->label, offset);
+	
 	mutex_lock(&st->slock);
 
 	/* If set as output, return the output */
@@ -455,6 +464,7 @@ static int ti_ads7950_get(struct gpio_chip *chip, unsigned int offset)
 out:
 	mutex_unlock(&st->slock);
 
+	pr_info("ads7950 get end [%d].\n", ret);
 	return ret;
 }
 
@@ -511,7 +521,6 @@ static int ti_ads7950_init_hw(struct ti_ads7950_state *st)
 	int ret = 0;
 
 	mutex_lock(&st->slock);
-
 	/* Settings for Manual/Auto1/Auto2 commands */
 	/* Default to 5v ref */
 	st->cmd_settings_bitmask = TI_ADS7950_CR_RANGE_5V;
@@ -538,6 +547,7 @@ static int ti_ads7950_probe(struct spi_device *spi)
 	const struct ti_ads7950_chip_info *info;
 	int ret;
 
+	pr_info("ads7950 init...\n");
 	spi->bits_per_word = 16;
 	spi->mode |= SPI_CS_WORD;
 	ret = spi_setup(spi);
@@ -565,6 +575,7 @@ static int ti_ads7950_probe(struct spi_device *spi)
 	indio_dev->num_channels = info->num_channels;
 	indio_dev->info = &ti_ads7950_info;
 
+	pr_info("ads7950 [%s], channels [%d].\n", indio_dev->name, indio_dev->num_channels);
 	/* build spi ring message */
 	spi_message_init(&st->ring_msg);
 
@@ -600,15 +611,16 @@ static int ti_ads7950_probe(struct spi_device *spi)
 	if (ACPI_COMPANION(&spi->dev))
 		st->vref_mv = TI_ADS7950_VA_MV_ACPI_DEFAULT;
 
+	pr_info("ads7950 vref_mv [%d].\n", st->vref_mv);
 	mutex_init(&st->slock);
 
 	st->reg = devm_regulator_get(&spi->dev, "vref");
 	if (IS_ERR(st->reg)) {
-		dev_err(&spi->dev, "Failed get get regulator \"vref\"\n");
+		dev_err(&spi->dev, "Failed to get regulator \"vref\"\n");
 		ret = PTR_ERR(st->reg);
 		goto error_destroy_mutex;
 	}
-
+	pr_info("ads7950 vref ok.\n");
 	ret = regulator_enable(st->reg);
 	if (ret) {
 		dev_err(&spi->dev, "Failed to enable regulator \"vref\"\n");
@@ -621,13 +633,13 @@ static int ti_ads7950_probe(struct spi_device *spi)
 		dev_err(&spi->dev, "Failed to setup triggered buffer\n");
 		goto error_disable_reg;
 	}
-
+	pr_info("ads7950 triggered buffer ok.\n");
 	ret = ti_ads7950_init_hw(st);
 	if (ret) {
 		dev_err(&spi->dev, "Failed to init adc chip\n");
 		goto error_cleanup_ring;
 	}
-
+	pr_info("ads7950 adc chip ok.\n");
 	ret = iio_device_register(indio_dev);
 	if (ret) {
 		dev_err(&spi->dev, "Failed to register iio device\n");
@@ -645,13 +657,13 @@ static int ti_ads7950_probe(struct spi_device *spi)
 	st->chip.direction_output = ti_ads7950_direction_output;
 	st->chip.get = ti_ads7950_get;
 	st->chip.set = ti_ads7950_set;
-
+	pr_info("ads7950 add gpio chip[%s].\n", st->chip.label);
 	ret = gpiochip_add_data(&st->chip, st);
 	if (ret) {
 		dev_err(&spi->dev, "Failed to init GPIOs\n");
 		goto error_iio_device;
 	}
-
+	pr_info("ads7950 ready.\n");
 	return 0;
 
 error_iio_device:
